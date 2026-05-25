@@ -2,6 +2,8 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 
+st.write(df.columns)
+
 # -----------------------------
 # PAGE CONFIG
 # -----------------------------
@@ -17,6 +19,9 @@ def load_data():
     return df
 
 df = load_data()
+
+# Clean column names (removes hidden spaces)
+df.columns = df.columns.str.strip()
 
 # -----------------------------
 # METRICS
@@ -105,26 +110,24 @@ st.markdown("Track microcycle loads and identify outliers")
 # -----------------------------
 # BOXPLOT
 # -----------------------------
-fig = px.box(
-    filtered,
-    x="DateType",
-    y=metric,
-    points="all",
-    color="Outlier",
-    facet_col="Year",
-    color_discrete_map={
-        False: clemson_orange,
-        True: "black"
-    }
-)
+try:
+    fig = px.box(
+        filtered,
+        x="DateType",   # adjust if needed
+        y=metric,
+        points="all",
+        color="Outlier",
+        facet_col="Year"
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
 
-fig.update_layout(
-    plot_bgcolor="white",
-    paper_bgcolor="white",
-    font=dict(color=clemson_purple)
-)
+except Exception as e:
+    st.error(f"Plot error: {e}")
+    st.write(filtered.head())
 
-st.plotly_chart(fig, use_container_width=True)
+for col in metrics:
+    df[col] = pd.to_numeric(df[col], errors="coerce")
 
 # -----------------------------
 # SUMMARY STATS
