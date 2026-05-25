@@ -119,8 +119,7 @@ try:
         x="DateType",   # adjust if needed
         y=metric,
         points="all",
-        color="Outlier",
-        facet_col="Year"
+        color="Outlier"
     )
     
     st.plotly_chart(fig, use_container_width=True)
