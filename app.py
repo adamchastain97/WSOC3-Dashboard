@@ -2,6 +2,9 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 
+
+# Load data
+df = pd.read_excel("WSOC Dataset.xlsx")
 st.write(df.columns)
 
 # -----------------------------
