@@ -31,7 +31,7 @@ df.columns = df.columns.str.strip()
 # -----------------------------
 metrics = [
     "Total Player Load",
-    "Total Distance",
+    "Total Distance (mi) (m)",
     "Total A3+D3",
     "HSD >9mph Tot (mi)",
     "VHSD > 13mph",
