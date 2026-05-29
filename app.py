@@ -3,9 +3,6 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import streamlit as st
 
-# --------------------------------------------------
-# Dashboard setup
-# --------------------------------------------------
 st.set_page_config(
     page_title="WSOC Total Distance Dashboard",
     layout="wide"
@@ -14,29 +11,13 @@ st.set_page_config(
 st.title("WSOC Total Distance Boxplot Dashboard")
 
 # --------------------------------------------------
-# File path
-# --------------------------------------------------
-# --------------------------------------------------
-# Upload Excel file
-# --------------------------------------------------
-uploaded_file = st.file_uploader(
-    "Upload WSOC Dataset Excel file",
-    type=["xlsx"]
-)
-
-if uploaded_file is None:
-    st.info("Upload your WSOC Dataset.xlsx file to begin.")
-    st.stop()
-
-df = load_data(uploaded_file)
-
-# --------------------------------------------------
 # Column names
 # --------------------------------------------------
 date_col = "Date"
 lookup_date_col = "Date.1"
 date_type_col = "DateType"
 metric_col = "Total Distance (mi) (m)"
+
 
 # --------------------------------------------------
 # Load and prepare data
@@ -82,6 +63,21 @@ def load_data(uploaded_file):
     df["DateLabel"] = df[date_col].dt.strftime("%m/%d/%Y")
 
     return df
+
+
+# --------------------------------------------------
+# Upload Excel file
+# --------------------------------------------------
+uploaded_file = st.file_uploader(
+    "Upload WSOC Dataset Excel file",
+    type=["xlsx"]
+)
+
+if uploaded_file is None:
+    st.info("Upload your WSOC Dataset.xlsx file to begin.")
+    st.stop()
+
+df = load_data(uploaded_file)
 
 # --------------------------------------------------
 # Sidebar filters
