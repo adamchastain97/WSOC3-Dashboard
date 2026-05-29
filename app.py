@@ -16,7 +16,19 @@ st.title("WSOC Total Distance Boxplot Dashboard")
 # --------------------------------------------------
 # File path
 # --------------------------------------------------
-file_path = r"C:\Users\adamc\OneDrive\Desktop\Data Projects\WSOC Dataset.xlsx"
+# --------------------------------------------------
+# Upload Excel file
+# --------------------------------------------------
+uploaded_file = st.file_uploader(
+    "Upload WSOC Dataset Excel file",
+    type=["xlsx"]
+)
+
+if uploaded_file is None:
+    st.info("Upload your WSOC Dataset.xlsx file to begin.")
+    st.stop()
+
+df = load_data(uploaded_file)
 
 # --------------------------------------------------
 # Column names
@@ -30,8 +42,8 @@ metric_col = "Total Distance (mi) (m)"
 # Load and prepare data
 # --------------------------------------------------
 @st.cache_data
-def load_data(file_path):
-    sheets = pd.read_excel(file_path, sheet_name=None)
+def load_data(uploaded_file):
+    sheets = pd.read_excel(uploaded_file, sheet_name=None)
 
     all_data = []
 
@@ -70,9 +82,6 @@ def load_data(file_path):
     df["DateLabel"] = df[date_col].dt.strftime("%m/%d/%Y")
 
     return df
-
-
-df = load_data(file_path)
 
 # --------------------------------------------------
 # Sidebar filters
