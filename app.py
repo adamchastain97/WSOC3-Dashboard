@@ -1,157 +1,174 @@
 import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 import streamlit as st
-import plotly.express as px
 
+# --------------------------------------------------
+# Dashboard setup
+# --------------------------------------------------
+st.set_page_config(
+    page_title="WSOC Total Distance Dashboard",
+    layout="wide"
+)
 
-# Load data
-df = pd.read_excel("WSOC Dataset.xlsx")
-st.write(df.columns)
+st.title("WSOC Total Distance Boxplot Dashboard")
 
-# -----------------------------
-# PAGE CONFIG
-# -----------------------------
-st.set_page_config(page_title="WSOC Dashboard", layout="wide")
+# --------------------------------------------------
+# File path
+# --------------------------------------------------
+file_path = r"C:\Users\adamc\OneDrive\Desktop\Data Projects\WSOC Dataset.xlsx"
 
-# -----------------------------
-# LOAD DATA
-# -----------------------------
+# --------------------------------------------------
+# Column names
+# --------------------------------------------------
+date_col = "Date"
+lookup_date_col = "Date.1"
+date_type_col = "DateType"
+metric_col = "Total Distance (mi) (m)"
+
+# --------------------------------------------------
+# Load and prepare data
+# --------------------------------------------------
 @st.cache_data
-def load_data():
-    df = pd.read_excel("WSOC Dataset.xlsx")
-    df["Date"] = pd.to_datetime(df["Date"])
+def load_data(file_path):
+    sheets = pd.read_excel(file_path, sheet_name=None)
+
+    all_data = []
+
+    for sheet_name, sheet in sheets.items():
+        sheet = sheet.copy()
+
+        sheet[date_col] = pd.to_datetime(
+            sheet[date_col],
+            errors="coerce"
+        ).dt.normalize()
+
+        sheet[lookup_date_col] = pd.to_datetime(
+            sheet[lookup_date_col],
+            errors="coerce"
+        ).dt.normalize()
+
+        date_type_lookup = (
+            sheet[[lookup_date_col, date_type_col]]
+            .dropna(subset=[lookup_date_col, date_type_col])
+            .drop_duplicates(subset=[lookup_date_col])
+            .set_index(lookup_date_col)[date_type_col]
+        )
+
+        sheet["CleanDateType"] = sheet[date_col].map(date_type_lookup)
+
+        sheet["SourceSheet"] = sheet_name
+        all_data.append(sheet)
+
+    df = pd.concat(all_data, ignore_index=True)
+
+    df = df.dropna(
+        subset=[date_col, metric_col, "CleanDateType"]
+    ).copy()
+
+    df["Year"] = df[date_col].dt.year
+    df["DateLabel"] = df[date_col].dt.strftime("%m/%d/%Y")
+
     return df
 
-df = load_data()
 
-# Clean column names (removes hidden spaces)
-df.columns = df.columns.str.strip()
+df = load_data(file_path)
 
-# -----------------------------
-# METRICS
-# -----------------------------
-metrics = [
-    "Total Player Load",
-    "Total Distance (mi) (m)",
-    "Total A3+D3",
-    "HSD >9mph Tot (mi)",
-    "VHSD > 13mph",
-    "VHSD Exposures > 13mph"
-]
-
-# -----------------------------
-# COLORS
-# -----------------------------
-clemson_orange = "#F56600"
-clemson_purple = "#522D80"
-
-# -----------------------------
-# SIDEBAR FILTERS
-# -----------------------------
+# --------------------------------------------------
+# Sidebar filters
+# --------------------------------------------------
 st.sidebar.header("Filters")
 
-metric = st.sidebar.selectbox("Select Metric", metrics)
+year_options = sorted(df["Year"].dropna().unique())
 
-datetype = st.sidebar.multiselect(
-    "Date Type",
-    sorted(df["DateType"].dropna().unique())
+selected_year = st.sidebar.selectbox(
+    "Select Year",
+    year_options
 )
 
-date = st.sidebar.multiselect(
-    "Date",
-    sorted(df["Date"].dt.strftime("%Y-%m-%d").unique())
+year_df = df[df["Year"] == selected_year].copy()
+
+date_type_order = [
+    "MD -4", "MD -3", "MD -2", "MD -1",
+    "MD",
+    "MD +1", "MD +2", "MD +3", "MD +4",
+    "MD +1/-2", "MD +2/-1", "MD +3/-1", "MD +4/-1"
+]
+
+available_date_types = [
+    date_type for date_type in date_type_order
+    if date_type in year_df["CleanDateType"].unique()
+]
+
+extra_date_types = sorted(
+    date_type for date_type in year_df["CleanDateType"].dropna().unique()
+    if date_type not in available_date_types
 )
 
-matchday = st.sidebar.multiselect(
-    "Match Day",
-    df["Match Day"].dropna().unique()
+date_type_options = available_date_types + extra_date_types
+
+selected_date_type = st.sidebar.selectbox(
+    "Select DateType",
+    date_type_options
 )
 
-position = st.sidebar.multiselect(
-    "Position",
-    df["Position Name"].dropna().unique()
+plot_df = year_df[
+    year_df["CleanDateType"] == selected_date_type
+].copy()
+
+# --------------------------------------------------
+# Plot
+# --------------------------------------------------
+st.subheader(
+    f"Total Distance by Individual Date: {selected_year} - {selected_date_type}"
 )
 
-player = st.sidebar.multiselect(
-    "Player",
-    df["Name"].dropna().unique()
-)
-
-# -----------------------------
-# FILTER DATA
-# -----------------------------
-filtered = df.copy()
-
-if datetype:
-    filtered = filtered[filtered["DateType"].isin(datetype)]
-
-if date:
-    filtered = filtered[
-        filtered["Date"].dt.strftime("%Y-%m-%d").isin(date)
-    ]
-
-if matchday:
-    filtered = filtered[filtered["Match Day"].isin(matchday)]
-
-if position:
-    filtered = filtered[filtered["Position Name"].isin(position)]
-
-if player:
-    filtered = filtered[filtered["Name"].isin(player)]
-
-# -----------------------------
-# OUTLIER DETECTION
-# -----------------------------
-threshold = filtered[metric].quantile(0.95)
-filtered["Outlier"] = filtered[metric] > threshold
-
-# -----------------------------
-# MAIN TITLE
-# -----------------------------
-st.title("WSOC Load Dashboard")
-st.markdown("Track microcycle loads and identify outliers")
-
-# -----------------------------
-# BOXPLOT
-# -----------------------------
-try:
-    fig = px.box(
-        filtered,
-        x="DateType",   # adjust if needed
-        y=metric,
-        points="all",
-        color="Outlier"
+if plot_df.empty:
+    st.warning("No data available for this year and DateType.")
+else:
+    date_order = (
+        plot_df[[date_col, "DateLabel"]]
+        .drop_duplicates()
+        .sort_values(date_col)["DateLabel"]
+        .tolist()
     )
-    
-    st.plotly_chart(fig, use_container_width=True)
 
-except Exception as e:
-    st.error(f"Plot error: {e}")
-    st.write(filtered.head())
+    sns.set_theme(style="whitegrid")
 
-for col in metrics:
-    df[col] = pd.to_numeric(df[col], errors="coerce")
+    fig, ax = plt.subplots(figsize=(20, 7))
 
-# -----------------------------
-# SUMMARY STATS
-# -----------------------------
-st.subheader("Summary Stats")
+    sns.boxplot(
+        data=plot_df,
+        x="DateLabel",
+        y=metric_col,
+        order=date_order,
+        color="#6f8fb8",
+        ax=ax
+    )
 
-summary = filtered.groupby("DateType")[metric].agg([
-    "mean", "median", "max", "min"
-]).reset_index()
+    ax.set_title(
+        f"Total Distance by Individual Date - {selected_year} - {selected_date_type}"
+    )
+    ax.set_xlabel("Individual Date")
+    ax.set_ylabel("Total Distance")
+    ax.tick_params(axis="x", rotation=90)
 
-st.dataframe(summary)
+    st.pyplot(fig)
 
-# -----------------------------
-# DOWNLOAD DATA
-# -----------------------------
-st.subheader("Download Filtered Data")
-
-csv = filtered.to_csv(index=False).encode("utf-8")
-
-st.download_button(
-    "Download CSV",
-    csv,
-    "filtered_data.csv",
-    "text/csv"
-)
+# --------------------------------------------------
+# Optional data table
+# --------------------------------------------------
+with st.expander("View Filtered Data"):
+    st.dataframe(
+        plot_df[
+            [
+                "Name",
+                date_col,
+                "DateLabel",
+                "CleanDateType",
+                metric_col,
+                "Year"
+            ]
+        ],
+        use_container_width=True
+    )
