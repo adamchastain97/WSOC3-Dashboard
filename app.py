@@ -230,4 +230,3 @@ with st.expander("View Filtered Data"):
         ],
         use_container_width=True
     )
-    )
