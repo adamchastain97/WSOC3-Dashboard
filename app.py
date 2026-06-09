@@ -10,36 +10,28 @@ st.set_page_config(
 
 st.title("WSOC Total Distance Boxplot Dashboard")
 
-# --------------------------------------------------
-# Column names
-# --------------------------------------------------
 date_col = "Date"
 lookup_date_col = "Date.1"
 date_type_col = "DateType"
 metric_col = "Total Distance (mi) (m)"
 
 
-# --------------------------------------------------
-# Load and prepare data
-# --------------------------------------------------
-@st.cache_data
-def load_data(uploaded_file):
-    sheets = pd.read_excel(uploaded_file, sheet_name=None)
+def clean_text(value):
+    if pd.isna(value):
+        return ""
+    return str(value).strip().lower()
 
+
+@st.cache_data
+def load_main_data(uploaded_file):
+    sheets = pd.read_excel(uploaded_file, sheet_name=None)
     all_data = []
 
     for sheet_name, sheet in sheets.items():
         sheet = sheet.copy()
 
-        sheet[date_col] = pd.to_datetime(
-            sheet[date_col],
-            errors="coerce"
-        ).dt.normalize()
-
-        sheet[lookup_date_col] = pd.to_datetime(
-            sheet[lookup_date_col],
-            errors="coerce"
-        ).dt.normalize()
+        sheet[date_col] = pd.to_datetime(sheet[date_col], errors="coerce").dt.normalize()
+        sheet[lookup_date_col] = pd.to_datetime(sheet[lookup_date_col], errors="coerce").dt.normalize()
 
         date_type_lookup = (
             sheet[[lookup_date_col, date_type_col]]
@@ -49,39 +41,106 @@ def load_data(uploaded_file):
         )
 
         sheet["CleanDateType"] = sheet[date_col].map(date_type_lookup)
-
         sheet["SourceSheet"] = sheet_name
         all_data.append(sheet)
 
     df = pd.concat(all_data, ignore_index=True)
 
-    df = df.dropna(
-        subset=[date_col, metric_col, "CleanDateType"]
-    ).copy()
-
+    df = df.dropna(subset=[date_col, metric_col, "CleanDateType"]).copy()
     df["Year"] = df[date_col].dt.year
     df["DateLabel"] = df[date_col].dt.strftime("%m/%d/%Y")
 
     return df
 
 
-# --------------------------------------------------
-# Upload Excel file
-# --------------------------------------------------
-uploaded_file = st.file_uploader(
-    "Upload WSOC Dataset Excel file",
+@st.cache_data
+def load_outliers(uploaded_file):
+    outliers = pd.read_excel(uploaded_file)
+
+    outliers["Date"] = pd.to_datetime(outliers["Date"], errors="coerce").dt.normalize()
+    outliers["Year"] = pd.to_numeric(outliers["Year"], errors="coerce")
+    outliers["CleanDateType"] = outliers["Date Type"].astype(str).str.strip()
+    outliers["OutlierDistanceRounded"] = outliers["Total Dist. (mi) (m)"].round(3)
+    outliers["CleanName"] = outliers["Name"].apply(clean_text)
+
+    return outliers.dropna(subset=["Year", "Date", "CleanDateType", "OutlierDistanceRounded"])
+
+
+def apply_outlier_filter(df, outliers, match_mode):
+    df = df.copy()
+
+    df["CleanName"] = df["Name"].apply(clean_text)
+    df["DistanceRounded"] = df[metric_col].round(3)
+
+    if match_mode == "Strict: name + date + DateType + distance":
+        merge_cols_main = ["Year", date_col, "CleanDateType", "DistanceRounded", "CleanName"]
+        merge_cols_out = ["Year", "Date", "CleanDateType", "OutlierDistanceRounded", "CleanName"]
+
+        outlier_keys = outliers[merge_cols_out].drop_duplicates().copy()
+        outlier_keys["IsOutlier"] = True
+
+        filtered = df.merge(
+            outlier_keys,
+            left_on=merge_cols_main,
+            right_on=merge_cols_out,
+            how="left"
+        )
+
+    else:
+        merge_cols_main = ["Year", date_col, "CleanDateType", "DistanceRounded"]
+        merge_cols_out = ["Year", "Date", "CleanDateType", "OutlierDistanceRounded"]
+
+        outlier_keys = outliers[merge_cols_out].drop_duplicates().copy()
+        outlier_keys["IsOutlier"] = True
+
+        filtered = df.merge(
+            outlier_keys,
+            left_on=merge_cols_main,
+            right_on=merge_cols_out,
+            how="left"
+        )
+
+    removed = filtered["IsOutlier"].fillna(False).sum()
+    filtered = filtered[filtered["IsOutlier"] != True].copy()
+
+    return filtered, int(removed)
+
+
+st.sidebar.header("Files")
+
+main_file = st.sidebar.file_uploader(
+    "Upload WSOC Dataset.xlsx",
     type=["xlsx"]
 )
 
-if uploaded_file is None:
+outlier_file = st.sidebar.file_uploader(
+    "Upload WSOC Outliers 23-26.xlsx",
+    type=["xlsx"]
+)
+
+if main_file is None:
     st.info("Upload your WSOC Dataset.xlsx file to begin.")
     st.stop()
 
-df = load_data(uploaded_file)
+df = load_main_data(main_file)
 
-# --------------------------------------------------
-# Sidebar filters
-# --------------------------------------------------
+if outlier_file is not None:
+    outliers = load_outliers(outlier_file)
+
+    match_mode = st.sidebar.selectbox(
+        "Outlier matching method",
+        [
+            "Flexible: date + DateType + rounded distance",
+            "Strict: name + date + DateType + distance"
+        ]
+    )
+
+    df, removed_count = apply_outlier_filter(df, outliers, match_mode)
+
+    st.sidebar.success(f"Filtered out {removed_count} outlier rows.")
+else:
+    st.sidebar.warning("No outlier file uploaded. Showing unfiltered data.")
+
 st.sidebar.header("Filters")
 
 year_options = sorted(df["Year"].dropna().unique())
@@ -121,15 +180,12 @@ plot_df = year_df[
     year_df["CleanDateType"] == selected_date_type
 ].copy()
 
-# --------------------------------------------------
-# Plot
-# --------------------------------------------------
 st.subheader(
     f"Total Distance by Individual Date: {selected_year} - {selected_date_type}"
 )
 
 if plot_df.empty:
-    st.warning("No data available for this year and DateType.")
+    st.warning("No data available for this year and DateType after filtering.")
 else:
     date_order = (
         plot_df[[date_col, "DateLabel"]]
@@ -160,9 +216,6 @@ else:
 
     st.pyplot(fig)
 
-# --------------------------------------------------
-# Optional data table
-# --------------------------------------------------
 with st.expander("View Filtered Data"):
     st.dataframe(
         plot_df[
@@ -176,4 +229,5 @@ with st.expander("View Filtered Data"):
             ]
         ],
         use_container_width=True
+    )
     )
