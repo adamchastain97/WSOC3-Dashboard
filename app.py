@@ -4,16 +4,26 @@ import matplotlib.pyplot as plt
 import streamlit as st
 
 st.set_page_config(
-    page_title="WSOC Total Distance Dashboard",
+    page_title="WSOC Performance Dashboard",
     layout="wide"
 )
 
-st.title("WSOC Total Distance Boxplot Dashboard")
+st.title("WSOC Performance Boxplot Dashboard")
 
 date_col = "Date"
 lookup_date_col = "Date.1"
 date_type_col = "DateType"
-metric_col = "Total Distance (mi) (m)"
+
+outlier_metric_col = "Total Distance (mi) (m)"
+
+metric_options = {
+    "Total Player Load": "Total Player Load",
+    "Total Distance (mi) (m)": "Total Distance (mi) (m)",
+    "Total A3+D3": "Total A3+D3",
+    "HSD >9mph": "HSD >9mph Tot (mi)",
+    "VHSD >13mph": "VHSD > 13mph",
+    "VHSD Exposures >13mph": "VHSD Exposures > 13mph"
+}
 
 
 def clean_text(value):
@@ -30,8 +40,15 @@ def load_main_data(uploaded_file):
     for sheet_name, sheet in sheets.items():
         sheet = sheet.copy()
 
-        sheet[date_col] = pd.to_datetime(sheet[date_col], errors="coerce").dt.normalize()
-        sheet[lookup_date_col] = pd.to_datetime(sheet[lookup_date_col], errors="coerce").dt.normalize()
+        sheet[date_col] = pd.to_datetime(
+            sheet[date_col],
+            errors="coerce"
+        ).dt.normalize()
+
+        sheet[lookup_date_col] = pd.to_datetime(
+            sheet[lookup_date_col],
+            errors="coerce"
+        ).dt.normalize()
 
         date_type_lookup = (
             sheet[[lookup_date_col, date_type_col]]
@@ -46,7 +63,10 @@ def load_main_data(uploaded_file):
 
     df = pd.concat(all_data, ignore_index=True)
 
-    df = df.dropna(subset=[date_col, metric_col, "CleanDateType"]).copy()
+    df = df.dropna(
+        subset=[date_col, outlier_metric_col, "CleanDateType"]
+    ).copy()
+
     df["Year"] = df[date_col].dt.year
     df["DateLabel"] = df[date_col].dt.strftime("%m/%d/%Y")
 
@@ -57,46 +77,97 @@ def load_main_data(uploaded_file):
 def load_outliers(uploaded_file):
     outliers = pd.read_excel(uploaded_file)
 
-    outliers["Date"] = pd.to_datetime(outliers["Date"], errors="coerce").dt.normalize()
-    outliers["Year"] = pd.to_numeric(outliers["Year"], errors="coerce")
+    outliers["Date"] = pd.to_datetime(
+        outliers["Date"],
+        errors="coerce"
+    ).dt.normalize()
+
+    outliers["Year"] = pd.to_numeric(
+        outliers["Year"],
+        errors="coerce"
+    )
+
     outliers["CleanDateType"] = outliers["Date Type"].astype(str).str.strip()
     outliers["OutlierDistanceRounded"] = outliers["Total Dist. (mi) (m)"].round(3)
     outliers["CleanName"] = outliers["Name"].apply(clean_text)
 
-    return outliers.dropna(subset=["Year", "Date", "CleanDateType", "OutlierDistanceRounded"])
+    return outliers.dropna(
+        subset=["Year", "Date", "CleanDateType", "OutlierDistanceRounded"]
+    )
 
 
 def apply_outlier_filter(df, outliers, match_mode):
     df = df.copy()
 
     df["CleanName"] = df["Name"].apply(clean_text)
-    df["DistanceRounded"] = df[metric_col].round(3)
+    df["DistanceRounded"] = df[outlier_metric_col].round(3)
 
     if match_mode == "Strict: name + date + DateType + distance":
-        merge_cols_main = ["Year", date_col, "CleanDateType", "DistanceRounded", "CleanName"]
-        merge_cols_out = ["Year", "Date", "CleanDateType", "OutlierDistanceRounded", "CleanName"]
+        outlier_keys = (
+            outliers[
+                [
+                    "Year",
+                    "Date",
+                    "CleanDateType",
+                    "OutlierDistanceRounded",
+                    "CleanName"
+                ]
+            ]
+            .drop_duplicates()
+            .copy()
+        )
 
-        outlier_keys = outliers[merge_cols_out].drop_duplicates().copy()
         outlier_keys["IsOutlier"] = True
 
         filtered = df.merge(
             outlier_keys,
-            left_on=merge_cols_main,
-            right_on=merge_cols_out,
+            left_on=[
+                "Year",
+                date_col,
+                "CleanDateType",
+                "DistanceRounded",
+                "CleanName"
+            ],
+            right_on=[
+                "Year",
+                "Date",
+                "CleanDateType",
+                "OutlierDistanceRounded",
+                "CleanName"
+            ],
             how="left"
         )
 
     else:
-        merge_cols_main = ["Year", date_col, "CleanDateType", "DistanceRounded"]
-        merge_cols_out = ["Year", "Date", "CleanDateType", "OutlierDistanceRounded"]
+        outlier_keys = (
+            outliers[
+                [
+                    "Year",
+                    "Date",
+                    "CleanDateType",
+                    "OutlierDistanceRounded"
+                ]
+            ]
+            .drop_duplicates()
+            .copy()
+        )
 
-        outlier_keys = outliers[merge_cols_out].drop_duplicates().copy()
         outlier_keys["IsOutlier"] = True
 
         filtered = df.merge(
             outlier_keys,
-            left_on=merge_cols_main,
-            right_on=merge_cols_out,
+            left_on=[
+                "Year",
+                date_col,
+                "CleanDateType",
+                "DistanceRounded"
+            ],
+            right_on=[
+                "Year",
+                "Date",
+                "CleanDateType",
+                "OutlierDistanceRounded"
+            ],
             how="left"
         )
 
@@ -176,16 +247,31 @@ selected_date_type = st.sidebar.selectbox(
     date_type_options
 )
 
+available_metric_options = {
+    display_name: column_name
+    for display_name, column_name in metric_options.items()
+    if column_name in year_df.columns
+}
+
+selected_metric_label = st.sidebar.selectbox(
+    "Select Metric",
+    list(available_metric_options.keys())
+)
+
+selected_metric = available_metric_options[selected_metric_label]
+
 plot_df = year_df[
     year_df["CleanDateType"] == selected_date_type
 ].copy()
 
+plot_df = plot_df.dropna(subset=[selected_metric])
+
 st.subheader(
-    f"Total Distance by Individual Date: {selected_year} - {selected_date_type}"
+    f"{selected_metric_label} by Individual Date: {selected_year} - {selected_date_type}"
 )
 
 if plot_df.empty:
-    st.warning("No data available for this year and DateType after filtering.")
+    st.warning("No data available for this year, DateType, and metric after filtering.")
 else:
     date_order = (
         plot_df[[date_col, "DateLabel"]]
@@ -201,32 +287,33 @@ else:
     sns.boxplot(
         data=plot_df,
         x="DateLabel",
-        y=metric_col,
+        y=selected_metric,
         order=date_order,
         color="#6f8fb8",
+        showfliers=False,
         ax=ax
     )
 
     ax.set_title(
-        f"Total Distance by Individual Date - {selected_year} - {selected_date_type}"
+        f"{selected_metric_label} by Individual Date - {selected_year} - {selected_date_type}"
     )
     ax.set_xlabel("Individual Date")
-    ax.set_ylabel("Total Distance")
+    ax.set_ylabel(selected_metric_label)
     ax.tick_params(axis="x", rotation=90)
 
     st.pyplot(fig)
 
 with st.expander("View Filtered Data"):
+    columns_to_show = [
+        "Name",
+        date_col,
+        "DateLabel",
+        "CleanDateType",
+        selected_metric,
+        "Year"
+    ]
+
     st.dataframe(
-        plot_df[
-            [
-                "Name",
-                date_col,
-                "DateLabel",
-                "CleanDateType",
-                metric_col,
-                "Year"
-            ]
-        ],
+        plot_df[columns_to_show],
         use_container_width=True
     )
