@@ -302,6 +302,7 @@ else:
     ax.tick_params(axis="x", rotation=90)
 
     st.pyplot(fig)
+
     summary_table = (
         plot_df
         .groupby("DateLabel")[selected_metric]
@@ -334,12 +335,26 @@ else:
     summary_table["Mean"] = summary_table["Mean"].round(3)
     summary_table["Standard_Deviation"] = summary_table["Standard_Deviation"].round(3)
 
+    summary_table["Mean / Standard Deviation"] = (
+        "Mean: " + summary_table["Mean"].astype(str)
+        + " | SD: " + summary_table["Standard_Deviation"].astype(str)
+    )
+
+    summary_table = summary_table[
+        [
+            "DateLabel",
+            "Mean / Standard Deviation",
+            "Count"
+        ]
+    ]
+
     st.subheader("Mean and Standard Deviation by Date")
 
     st.dataframe(
         summary_table,
         use_container_width=True
     )
+
 with st.expander("View Filtered Data"):
     columns_to_show = [
         "Name",
