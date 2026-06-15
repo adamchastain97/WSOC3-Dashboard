@@ -305,50 +305,40 @@ else:
 
     summary_table = (
         plot_df
-        .groupby("DateLabel")[selected_metric]
+        .groupby(["Year", "CleanDateType", date_col, "DateLabel"])[selected_metric]
         .agg(
             Mean="mean",
             Standard_Deviation="std",
             Count="count"
         )
         .reset_index()
-    )
-
-    date_sorter = (
-        plot_df[[date_col, "DateLabel"]]
-        .drop_duplicates()
         .sort_values(date_col)
     )
 
-    summary_table = summary_table.merge(
-        date_sorter,
-        on="DateLabel",
-        how="left"
-    )
-
-    summary_table = (
-        summary_table
-        .sort_values(date_col)
-        .drop(columns=[date_col])
-    )
-
+    summary_table["Metric"] = selected_metric_label
     summary_table["Mean"] = summary_table["Mean"].round(3)
-    summary_table["Standard_Deviation"] = summary_table["Standard_Deviation"].round(3)
-
-    summary_table["Mean / Standard Deviation"] = (
-        "Mean: " + summary_table["Mean"].astype(str)
-        + " | SD: " + summary_table["Standard_Deviation"].astype(str)
-    )
+    summary_table["Standard Deviation"] = summary_table["Standard_Deviation"].round(3)
 
     summary_table = summary_table[
         [
+            "Year",
+            "CleanDateType",
             "DateLabel",
-            "Mean / Standard Deviation",
+            "Metric",
+            "Mean",
+            "Standard Deviation",
             "Count"
         ]
     ]
 
-    st.subheader("Mean and Standard Deviation by Date")
+    summary_table = summary_table.rename(
+        columns={
+            "CleanDateType": "DateType",
+            "DateLabel": "Individual Date"
+        }
+    )
+
+    st.subheader("Metric Summary by Year, DateType, and Individual Date")
 
     st.dataframe(
         summary_table,
