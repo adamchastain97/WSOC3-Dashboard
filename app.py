@@ -254,7 +254,7 @@ available_metric_options = {
 }
 
 selected_metric_label = st.sidebar.selectbox(
-    "Select Metric",
+    "Select Metric for Boxplot",
     list(available_metric_options.keys())
 )
 
@@ -303,47 +303,62 @@ else:
 
     st.pyplot(fig)
 
-    summary_table = (
-        plot_df
-        .groupby(["Year", "CleanDateType", date_col, "DateLabel"])[selected_metric]
-        .agg(
-            Mean="mean",
-            Standard_Deviation="std",
-            Count="count"
+    summary_rows = []
+
+    for metric_label, metric_column in metric_options.items():
+        if metric_column not in plot_df.columns:
+            continue
+
+        metric_summary = (
+            plot_df
+            .dropna(subset=[metric_column])
+            .groupby(["Year", "CleanDateType", date_col, "DateLabel"])[metric_column]
+            .agg(
+                Mean="mean",
+                Standard_Deviation="std",
+                Count="count"
+            )
+            .reset_index()
         )
-        .reset_index()
-        .sort_values(date_col)
-    )
 
-    summary_table["Metric"] = selected_metric_label
-    summary_table["Mean"] = summary_table["Mean"].round(3)
-    summary_table["Standard Deviation"] = summary_table["Standard_Deviation"].round(3)
+        metric_summary["Metric"] = metric_label
+        summary_rows.append(metric_summary)
 
-    summary_table = summary_table[
-        [
-            "Year",
-            "CleanDateType",
-            "DateLabel",
-            "Metric",
-            "Mean",
-            "Standard Deviation",
-            "Count"
+    if summary_rows:
+        summary_table = pd.concat(summary_rows, ignore_index=True)
+
+        summary_table = summary_table.sort_values(
+            [date_col, "Metric"]
+        )
+
+        summary_table["Mean"] = summary_table["Mean"].round(3)
+        summary_table["Standard Deviation"] = summary_table["Standard_Deviation"].round(3)
+
+        summary_table = summary_table[
+            [
+                "Year",
+                "CleanDateType",
+                "DateLabel",
+                "Metric",
+                "Mean",
+                "Standard Deviation",
+                "Count"
+            ]
         ]
-    ]
 
-    summary_table = summary_table.rename(
-        columns={
-            "CleanDateType": "DateType",
-            "DateLabel": "Individual Date"
-        }
-    )
+        summary_table = summary_table.rename(
+            columns={
+                "CleanDateType": "DateType",
+                "DateLabel": "Individual Date"
+            }
+        )
 
-    st.subheader("Metric Summary by Year, DateType, and Individual Date")
+        st.subheader("Metric Summary by Year, DateType, and Individual Date")
 
-    st.dataframe(
-        summary_table,
-        use_container_width=True
-    )
+        st.dataframe(
+            summary_table,
+            use_container_width=True
+        )
 
 with st.expander("View Filtered Data"):
     columns_to_show = [
