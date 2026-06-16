@@ -303,7 +303,9 @@ else:
 
     st.pyplot(fig)
 
-    summary_rows = []
+    summary_parts = []
+
+    group_cols = ["Year", "CleanDateType", date_col, "DateLabel"]
 
     for metric_label, metric_column in metric_options.items():
         if metric_column not in plot_df.columns:
@@ -312,43 +314,31 @@ else:
         metric_summary = (
             plot_df
             .dropna(subset=[metric_column])
-            .groupby(["Year", "CleanDateType", date_col, "DateLabel"])[metric_column]
-            .agg(
-                Mean="mean",
-                Standard_Deviation="std",
-                Count="count"
-            )
+            .groupby(group_cols)[metric_column]
+            .agg(["mean", "std"])
             .reset_index()
         )
 
-        metric_summary["Metric"] = metric_label
-        summary_rows.append(metric_summary)
-
-    if summary_rows:
-        summary_table = pd.concat(summary_rows, ignore_index=True)
-
-        summary_table = summary_table.sort_values(
-            [date_col, "Metric"]
+        metric_summary[metric_label] = (
+            metric_summary["mean"].round(3).astype(str)
+            + " +/- "
+            + metric_summary["std"].round(3).fillna(0).astype(str)
         )
 
-        summary_table["Mean"] = summary_table["Mean"].round(3)
-        summary_table["Standard_Deviation"] = summary_table["Standard_Deviation"].round(3)
+        metric_summary = metric_summary[group_cols + [metric_label]]
+        summary_parts.append(metric_summary)
 
-        summary_table["Mean / Standard Deviation"] = (
-            "Mean: " + summary_table["Mean"].astype(str)
-            + " | SD: " + summary_table["Standard_Deviation"].astype(str)
-        )
+    if summary_parts:
+        summary_table = summary_parts[0]
 
-        summary_table = summary_table[
-            [
-                "Year",
-                "CleanDateType",
-                "DateLabel",
-                "Metric",
-                "Mean / Standard Deviation",
-                "Count"
-            ]
-        ]
+        for next_summary in summary_parts[1:]:
+            summary_table = summary_table.merge(
+                next_summary,
+                on=group_cols,
+                how="outer"
+            )
+
+        summary_table = summary_table.sort_values(date_col)
 
         summary_table = summary_table.rename(
             columns={
@@ -356,6 +346,8 @@ else:
                 "DateLabel": "Individual Date"
             }
         )
+
+        summary_table = summary_table.drop(columns=[date_col])
 
         st.subheader("Metric Summary by Year, DateType, and Individual Date")
 
