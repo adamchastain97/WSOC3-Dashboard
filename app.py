@@ -332,7 +332,12 @@ else:
         )
 
         summary_table["Mean"] = summary_table["Mean"].round(3)
-        summary_table["Standard Deviation"] = summary_table["Standard_Deviation"].round(3)
+        summary_table["Standard_Deviation"] = summary_table["Standard_Deviation"].round(3)
+
+        summary_table["Mean / Standard Deviation"] = (
+            "Mean: " + summary_table["Mean"].astype(str)
+            + " | SD: " + summary_table["Standard_Deviation"].astype(str)
+        )
 
         summary_table = summary_table[
             [
@@ -340,8 +345,7 @@ else:
                 "CleanDateType",
                 "DateLabel",
                 "Metric",
-                "Mean",
-                "Standard Deviation",
+                "Mean / Standard Deviation",
                 "Count"
             ]
         ]
