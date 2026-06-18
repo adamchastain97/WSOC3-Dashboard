@@ -356,6 +356,61 @@ else:
             use_container_width=True
         )
 
+    overall_parts = []
+
+    overall_group_cols = ["Year", "CleanDateType"]
+
+    for metric_label, metric_column in metric_options.items():
+        if metric_column not in year_df.columns:
+            continue
+
+        overall_summary = (
+            year_df
+            .dropna(subset=[metric_column])
+            .groupby(overall_group_cols)[metric_column]
+            .agg(["mean", "std"])
+            .reset_index()
+        )
+
+        overall_summary[metric_label] = (
+            overall_summary["mean"].round(3).astype(str)
+            + " +/- "
+            + overall_summary["std"].round(3).fillna(0).astype(str)
+        )
+
+        overall_summary = overall_summary[
+            overall_group_cols + [metric_label]
+        ]
+
+        overall_parts.append(overall_summary)
+
+    if overall_parts:
+        overall_table = overall_parts[0]
+
+        for next_summary in overall_parts[1:]:
+            overall_table = overall_table.merge(
+                next_summary,
+                on=overall_group_cols,
+                how="outer"
+            )
+
+        overall_table = overall_table[
+            overall_table["CleanDateType"] == selected_date_type
+        ].copy()
+
+        overall_table = overall_table.rename(
+            columns={
+                "CleanDateType": "DateType"
+            }
+        )
+
+        st.subheader("Overall Metric Summary by Year and DateType")
+
+        st.dataframe(
+            overall_table,
+            use_container_width=True
+        )
+
 with st.expander("View Filtered Data"):
     columns_to_show = [
         "Name",
